@@ -18,9 +18,9 @@ class ChatbotConfig extends Page implements HasForms
 {
     use InteractsWithForms;
 
-    protected static string $view = 'filament.admin.pages.chatbot-config';
+    protected string $view = 'filament.admin.pages.chatbot-config';
 
-    protected static ?string $navigationGroup = 'AI Chatbot';
+    protected static \UnitEnum|string|null $navigationGroup = 'AI Chatbot';
 
     protected static string|\BackedEnum|null $navigationIcon = Heroicon::OutlinedCog6Tooth;
 
@@ -94,9 +94,10 @@ class ChatbotConfig extends Page implements HasForms
         try {
             $service->setConfig('system_prompt', $data['system_prompt'], $updatedBy);
             $service->setConfig('welcome_message', $data['welcome_message'], $updatedBy);
+            $keywords = $data['lead_trigger_keywords'] ?? [];
             $service->setConfig(
                 'lead_trigger_keywords',
-                implode(',', $data['lead_trigger_keywords'] ?? []),
+                is_array($keywords) ? implode(',', $keywords) : $keywords,
                 $updatedBy
             );
 
