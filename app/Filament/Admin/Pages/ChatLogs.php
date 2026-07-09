@@ -121,7 +121,7 @@ class ChatLogs extends Page
 
     public function detailUrl(string $sessionId): string
     {
-        return ChatLogDetail::getUrl(['session_id' => $sessionId]);
+        return ChatLogDetail::getUrl() . '?session_id=' . urlencode($sessionId);
     }
 
     public function getLeadStatusLabel(mixed $leadId): string
