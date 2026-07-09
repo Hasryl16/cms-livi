@@ -6,12 +6,58 @@ from typing import Optional
 
 router = APIRouter()
 
-# n8n Postgres Chat Memory stores messages as JSONB in the `message` column.
-# Timestamp column is "createdAt" (camelCase) in n8n v1+.
+# Standard n8n Postgres Chat Memory schema:
+#   session_id TEXT, message JSONB, created_at TIMESTAMPTZ
 # Content lives at: message->'data'->>'content'
 # Role lives at: message->>'type'  ("human" | "ai")
 _N8N_CONTENT = "h.message->'data'->>'content'"
-_N8N_TS = 'h."createdAt"'
+_N8N_TS = "h.created_at"
+
+
+def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
+              with_leads: bool) -> str:
+    if with_leads:
+        return f"""
+            SELECT
+                h.session_id,
+                MIN({_N8N_CONTENT}) AS first_message,
+                COUNT(*) AS msg_count,
+                l.id AS lead_id,
+                l.name AS lead_name,
+                MIN({_N8N_TS})::text AS started_at
+            FROM n8n_chat_histories h
+            LEFT JOIN leads l ON l.session_id = h.session_id
+            WHERE {date_cond} {date_to_cond} {search_cond}
+            GROUP BY h.session_id, l.id, l.name
+        """
+    return f"""
+        SELECT
+            h.session_id,
+            MIN({_N8N_CONTENT}) AS first_message,
+            COUNT(*) AS msg_count,
+            NULL::integer AS lead_id,
+            NULL::text AS lead_name,
+            MIN({_N8N_TS})::text AS started_at
+        FROM n8n_chat_histories h
+        WHERE {date_cond} {date_to_cond} {search_cond}
+        GROUP BY h.session_id
+    """
+
+
+async def _fetch_sessions(db: Connection, base: str, outer_filter: str,
+                          filter_params: list, per_page: int, offset: int):
+    """Run count + data queries. filter_params must NOT include limit/offset."""
+    n = len(filter_params)
+    count_q = f"SELECT COUNT(*) FROM ({base}) sub {outer_filter}"
+    total_row = await db.fetchrow(count_q, *filter_params)
+    total = total_row[0] if total_row else 0
+
+    data_q = (
+        f"SELECT * FROM ({base} ORDER BY started_at DESC) sub "
+        f"{outer_filter} LIMIT ${n + 1} OFFSET ${n + 2}"
+    )
+    rows = await db.fetch(data_q, *filter_params, per_page, offset)
+    return rows, total
 
 
 @router.get("/chat-logs")
@@ -24,17 +70,14 @@ async def list_chat_logs(
     per_page: int = Query(20, ge=1, le=100),
     db: Connection = Depends(get_db),
 ):
-    params: list = []
+    filter_params: list = []
 
     def p(val) -> str:
-        params.append(val)
-        return f"${len(params)}"
+        filter_params.append(val)
+        return f"${len(filter_params)}"
 
-    if date_from:
-        date_cond = f'{_N8N_TS} >= {p(date_from)}::timestamp'
-    else:
-        date_cond = f"{_N8N_TS} >= NOW() - INTERVAL '30 days'"
-
+    date_cond = (f"{_N8N_TS} >= {p(date_from)}::timestamp" if date_from
+                 else f"{_N8N_TS} >= NOW() - INTERVAL '30 days'")
     date_to_cond = f"AND {_N8N_TS} <= {p(date_to)}::timestamp" if date_to else ""
     search_cond = f"AND {_N8N_CONTENT} ILIKE {p(f'%{search}%')}" if search else ""
 
@@ -47,40 +90,20 @@ async def list_chat_logs(
     else:
         outer_filter = ""
 
-    base_cte = f"""
-        SELECT
-            h.session_id,
-            MIN({_N8N_CONTENT}) AS first_message,
-            COUNT(*) AS msg_count,
-            l.id AS lead_id,
-            l.name AS lead_name,
-            MIN({_N8N_TS})::text AS started_at
-        FROM n8n_chat_histories h
-        LEFT JOIN leads l ON l.session_id = h.session_id
-        WHERE {date_cond} {date_to_cond} {search_cond}
-        GROUP BY h.session_id, l.id, l.name
-    """
+    offset = (page - 1) * per_page
 
     try:
-        count_params = list(params)
-        count_q = f"SELECT COUNT(*) FROM ({base_cte}) sub {outer_filter}"
-        total_row = await db.fetchrow(count_q, *count_params)
-        total = total_row[0] if total_row else 0
-
-        limit_ph = p(per_page)
-        offset_ph = p((page - 1) * per_page)
-        data_q = f"""
-            SELECT * FROM ({base_cte} ORDER BY started_at DESC) sub
-            {outer_filter}
-            LIMIT {limit_ph} OFFSET {offset_ph}
-        """
-        rows = await db.fetch(data_q, *params)
-    except asyncpg.UndefinedTableError as e:
-        raise HTTPException(status_code=503, detail=f"Required table not found: {e}")
-    except asyncpg.UndefinedColumnError as e:
-        raise HTTPException(status_code=503, detail=f"Column mismatch — check n8n table schema: {e}")
+        base = _base_cte(date_cond, date_to_cond, search_cond, with_leads=True)
+        rows, total = await _fetch_sessions(db, base, outer_filter, list(filter_params), per_page, offset)
+    except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):
+        # leads table/column absent — retry without the join
+        try:
+            base = _base_cte(date_cond, date_to_cond, search_cond, with_leads=False)
+            rows, total = await _fetch_sessions(db, base, outer_filter, list(filter_params), per_page, offset)
+        except asyncpg.PostgresError as e:
+            raise HTTPException(status_code=503, detail=str(e))
     except asyncpg.PostgresError as e:
-        raise HTTPException(status_code=503, detail=f"Database error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
 
     return {
         "data": [dict(r) for r in rows],
@@ -108,10 +131,8 @@ async def get_chat_log(
             """,
             session_id,
         )
-    except asyncpg.UndefinedTableError as e:
-        raise HTTPException(status_code=503, detail=f"Required table not found: {e}")
     except asyncpg.PostgresError as e:
-        raise HTTPException(status_code=503, detail=f"Database error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
 
     if not rows:
         raise HTTPException(status_code=404, detail="Session not found")
