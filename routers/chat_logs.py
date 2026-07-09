@@ -29,7 +29,16 @@ _N8N_TS = "h.created_at"  # available after ALTER TABLE migration
 
 
 def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
-              with_leads: bool) -> str:
+              has_ts: bool = True) -> str:
+    # has_ts=False when n8n_chat_histories.created_at column doesn't exist yet
+    ts_expr = (
+        f"COALESCE(MIN({_N8N_TS}), MIN(l.created_at))::text"
+        if has_ts else
+        "MIN(l.created_at)::text"
+    )
+    dc = date_cond if has_ts else ""
+    dtc = date_to_cond if has_ts else ""
+
     n8n_part = f"""
         SELECT
             h.session_id,
@@ -37,17 +46,17 @@ def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
             COUNT(*) AS msg_count,
             l.id AS lead_id,
             l.name AS lead_name,
-            COALESCE(MIN({_N8N_TS}), MIN(l.created_at))::text AS started_at,
+            {ts_expr} AS started_at,
             MIN(h.id)::bigint AS min_id
         FROM n8n_chat_histories h
         LEFT JOIN leads l ON l.session_id = h.session_id
-        WHERE 1=1 {date_cond} {date_to_cond} {search_cond}
+        WHERE 1=1 {dc} {dtc} {search_cond}
         GROUP BY h.session_id, l.id, l.name
     """
-    if not with_leads:
-        return n8n_part
 
     # Lead-only sessions: quick-reply flows that never sent a message to n8n AI
+    lead_date_cond = date_cond.replace('h.', 'l.') if has_ts else ""
+    lead_date_to_cond = date_to_cond.replace('h.', 'l.') if has_ts else ""
     lead_only = f"""
         SELECT
             l.session_id,
@@ -61,7 +70,7 @@ def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
         WHERE NOT EXISTS (
             SELECT 1 FROM n8n_chat_histories h WHERE h.session_id = l.session_id
         )
-        {date_cond.replace('h.', 'l.')} {date_to_cond.replace('h.', 'l.')}
+        {lead_date_cond} {lead_date_to_cond}
     """
     return f"({n8n_part} UNION ALL {lead_only})"
 
@@ -117,13 +126,14 @@ async def list_chat_logs(
     offset = (page - 1) * per_page
 
     try:
-        base = _base_cte(date_cond, date_to_cond, search_cond, with_leads=True)
+        base = _base_cte(date_cond, date_to_cond, search_cond, has_ts=True)
         rows, total = await _fetch_sessions(db, base, outer_filter, list(filter_params), per_page, offset)
     except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):
+        # n8n_chat_histories.created_at column not yet added — fall back to no-timestamp query
         try:
-            base = _base_cte("", "", search_cond, with_leads=False)
-            no_date_params = [p for p in filter_params if search and p == f"%{search}%"] if search else []
-            rows, total = await _fetch_sessions(db, base, outer_filter, no_date_params, per_page, offset)
+            search_params = [f"%{search}%"] if search else []
+            base = _base_cte("", "", search_cond, has_ts=False)
+            rows, total = await _fetch_sessions(db, base, outer_filter, search_params, per_page, offset)
         except asyncpg.PostgresError as e:
             raise HTTPException(status_code=503, detail=str(e))
     except asyncpg.PostgresError as e:
