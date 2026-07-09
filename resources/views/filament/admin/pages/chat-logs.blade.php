@@ -1,45 +1,45 @@
 <x-filament-panels::page>
 
     {{-- Filters --}}
-    <div class="bg-white rounded-xl border border-gray-200 p-4 space-y-4 dark:bg-gray-900 dark:border-gray-700">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <div style="background:white;border-radius:12px;border:1px solid #e5e7eb;padding:16px 20px;" class="dark:bg-gray-900 dark:border-gray-700">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
             {{-- Search --}}
             <div>
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Search</label>
+                <label style="display:block;font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Search</label>
                 <input
                     type="text"
                     wire:model.live.debounce.400ms="search"
                     placeholder="Search message content..."
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                    style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:7px 12px;font-size:13px;outline:none;"
                 />
             </div>
 
             {{-- Date From --}}
             <div>
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">From</label>
+                <label style="display:block;font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">From</label>
                 <input
                     type="date"
                     wire:model.live="dateFrom"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                    style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:7px 12px;font-size:13px;outline:none;"
                 />
             </div>
 
             {{-- Date To --}}
             <div>
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">To</label>
+                <label style="display:block;font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">To</label>
                 <input
                     type="date"
                     wire:model.live="dateTo"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                    style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:7px 12px;font-size:13px;outline:none;"
                 />
             </div>
 
             {{-- Lead Status --}}
             <div>
-                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Lead Status</label>
+                <label style="display:block;font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Lead Status</label>
                 <select
                     wire:model.live="leadStatus"
-                    class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                    style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:7px 12px;font-size:13px;outline:none;background:white;"
                 >
                     <option value="">All</option>
                     <option value="lead_captured">Lead Captured</option>
@@ -49,99 +49,94 @@
             </div>
         </div>
 
-        <div class="flex justify-end">
-            <button
-                wire:click="resetFilters"
-                class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline"
-            >
+        <div style="text-align:right;margin-top:8px;">
+            <button wire:click="resetFilters" style="font-size:12px;color:#6b7280;background:none;border:none;cursor:pointer;text-decoration:underline;">
                 Reset Filters
             </button>
         </div>
     </div>
 
     {{-- Table --}}
-    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden dark:bg-gray-900 dark:border-gray-700">
+    <div style="background:white;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;" class="dark:bg-gray-900 dark:border-gray-700">
         @if (count($sessions) === 0)
-            <div class="py-16 text-center text-gray-500 dark:text-gray-400">
-                <x-heroicon-o-chat-bubble-left-right class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
-                <p class="text-sm font-medium">No chat sessions found</p>
-                <p class="text-xs mt-1">Try adjusting your filters or date range.</p>
+            <div style="padding:64px 24px;text-align:center;color:#9ca3af;">
+                <div style="font-size:32px;margin-bottom:8px;">💬</div>
+                <p style="font-size:14px;font-weight:500;color:#6b7280;">No chat sessions found</p>
+                <p style="font-size:12px;margin-top:4px;">Try adjusting your filters or date range.</p>
             </div>
         @else
-            <table class="w-full text-sm divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-800">
-                    <tr>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">Session ID</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">First Message</th>
-                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">Messages</th>
-                        <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">Lead Status</th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider dark:text-gray-400">Date</th>
-                        <th class="px-4 py-3"></th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                    @foreach ($sessions as $session)
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300 font-mono text-xs">
-                                {{ Str::limit($session['session_id'], 16) }}
-                            </td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300 max-w-xs">
-                                <span class="line-clamp-2">{{ $session['first_message'] ?? '—' }}</span>
-                            </td>
-                            <td class="px-4 py-3 text-center text-gray-700 dark:text-gray-300">
-                                {{ $session['msg_count'] ?? 0 }}
-                            </td>
-                            <td class="px-4 py-3 text-center">
-                                @if (!empty($session['lead_id']))
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                        Lead Captured
-                                    </span>
-                                @elseif (($session['msg_count'] ?? 0) <= 1)
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                                        Abandoned
-                                    </span>
-                                @else
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
-                                        No Lead
-                                    </span>
-                                @endif
-                            </td>
-                            <td class="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
-                                {{ $session['started_at'] ? \Carbon\Carbon::parse($session['started_at'])->format('d M Y, H:i') : '—' }}
-                            </td>
-                            <td class="px-4 py-3 text-right">
-                                <a
-                                    href="{{ $this->detailUrl($session['session_id']) }}"
-                                    class="text-xs font-semibold text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200"
-                                >
-                                    View →
-                                </a>
-                            </td>
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead>
+                        <tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb;">
+                            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Session ID</th>
+                            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">First Message</th>
+                            <th style="padding:10px 16px;text-align:center;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Msgs</th>
+                            <th style="padding:10px 16px;text-align:center;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Status</th>
+                            <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">Date</th>
+                            <th style="padding:10px 16px;"></th>
                         </tr>
-                    @endforeach
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach ($sessions as $session)
+                            <tr style="border-bottom:1px solid #f3f4f6;">
+                                <td style="padding:12px 16px;color:#374151;font-family:monospace;font-size:12px;">
+                                    {{ Str::limit($session['session_id'] ?? '', 16) }}
+                                </td>
+                                <td style="padding:12px 16px;color:#374151;max-width:300px;">
+                                    <span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+                                        {{ $session['first_message'] ?? '—' }}
+                                    </span>
+                                </td>
+                                <td style="padding:12px 16px;text-align:center;color:#374151;">
+                                    {{ $session['msg_count'] ?? 0 }}
+                                </td>
+                                <td style="padding:12px 16px;text-align:center;">
+                                    @if (!empty($session['lead_id']))
+                                        <span style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:9999px;font-size:11px;font-weight:600;background:#dcfce7;color:#166534;">
+                                            Lead Captured
+                                        </span>
+                                    @elseif (($session['msg_count'] ?? 0) <= 1)
+                                        <span style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:9999px;font-size:11px;font-weight:600;background:#fef9c3;color:#854d0e;">
+                                            Abandoned
+                                        </span>
+                                    @else
+                                        <span style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:9999px;font-size:11px;font-weight:600;background:#f3f4f6;color:#374151;">
+                                            No Lead
+                                        </span>
+                                    @endif
+                                </td>
+                                <td style="padding:12px 16px;color:#6b7280;font-size:12px;white-space:nowrap;">
+                                    {{ isset($session['started_at']) ? \Carbon\Carbon::parse($session['started_at'])->format('d M Y, H:i') : '—' }}
+                                </td>
+                                <td style="padding:12px 16px;text-align:right;">
+                                    <a href="{{ $this->detailUrl($session['session_id']) }}"
+                                       style="font-size:12px;font-weight:600;color:#16a34a;text-decoration:none;">
+                                        View →
+                                    </a>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
 
             {{-- Pagination --}}
             @if (($paginationMeta['total_pages'] ?? 1) > 1)
-                <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                    <span class="text-xs text-gray-500 dark:text-gray-400">
+                <div style="padding:12px 16px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:12px;color:#6b7280;">
                         Page {{ $paginationMeta['page'] ?? 1 }} of {{ $paginationMeta['total_pages'] ?? 1 }}
                         &middot; {{ $paginationMeta['total'] ?? 0 }} sessions
                     </span>
-                    <div class="flex gap-2">
-                        <button
-                            wire:click="prevPage"
-                            @if (($currentPage ?? 1) <= 1) disabled @endif
-                            class="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
+                    <div style="display:flex;gap:8px;">
+                        <button wire:click="prevPage"
+                                @if (($currentPage ?? 1) <= 1) disabled @endif
+                                style="padding:6px 12px;font-size:12px;border:1px solid #d1d5db;border-radius:8px;background:white;cursor:pointer;opacity:{{ ($currentPage ?? 1) <= 1 ? '0.4' : '1' }};">
                             ← Prev
                         </button>
-                        <button
-                            wire:click="nextPage"
-                            @if (($currentPage ?? 1) >= ($paginationMeta['total_pages'] ?? 1)) disabled @endif
-                            class="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
+                        <button wire:click="nextPage"
+                                @if (($currentPage ?? 1) >= ($paginationMeta['total_pages'] ?? 1)) disabled @endif
+                                style="padding:6px 12px;font-size:12px;border:1px solid #d1d5db;border-radius:8px;background:white;cursor:pointer;opacity:{{ ($currentPage ?? 1) >= ($paginationMeta['total_pages'] ?? 1) ? '0.4' : '1' }};">
                             Next →
                         </button>
                     </div>
