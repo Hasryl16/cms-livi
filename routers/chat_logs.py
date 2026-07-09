@@ -6,12 +6,13 @@ from typing import Optional
 
 router = APIRouter()
 
-# Standard n8n Postgres Chat Memory schema:
-#   session_id TEXT, message JSONB, created_at TIMESTAMPTZ
-# Content lives at: message->'data'->>'content'
-# Role lives at: message->>'type'  ("human" | "ai")
+# Actual n8n_chat_histories schema (confirmed from DB):
+#   id SERIAL, session_id VARCHAR(255), message JSONB
+#   — NO timestamp column; use id (auto-increment) for ordering
+#
+# leads schema (confirmed from DB):
+#   id, name, company, whatsapp, notes, lead_type, session_id, created_at
 _N8N_CONTENT = "h.message->'data'->>'content'"
-_N8N_TS = "h.created_at"
 
 
 def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
@@ -24,10 +25,11 @@ def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
                 COUNT(*) AS msg_count,
                 l.id AS lead_id,
                 l.name AS lead_name,
-                MIN({_N8N_TS})::text AS started_at
+                MIN(l.created_at)::text AS started_at,
+                MIN(h.id) AS min_id
             FROM n8n_chat_histories h
             LEFT JOIN leads l ON l.session_id = h.session_id
-            WHERE {date_cond} {date_to_cond} {search_cond}
+            WHERE 1=1 {date_cond} {date_to_cond} {search_cond}
             GROUP BY h.session_id, l.id, l.name
         """
     return f"""
@@ -37,23 +39,23 @@ def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
             COUNT(*) AS msg_count,
             NULL::integer AS lead_id,
             NULL::text AS lead_name,
-            MIN({_N8N_TS})::text AS started_at
+            NULL::text AS started_at,
+            MIN(h.id) AS min_id
         FROM n8n_chat_histories h
-        WHERE {date_cond} {date_to_cond} {search_cond}
+        WHERE 1=1 {search_cond}
         GROUP BY h.session_id
     """
 
 
 async def _fetch_sessions(db: Connection, base: str, outer_filter: str,
                           filter_params: list, per_page: int, offset: int):
-    """Run count + data queries. filter_params must NOT include limit/offset."""
     n = len(filter_params)
     count_q = f"SELECT COUNT(*) FROM ({base}) sub {outer_filter}"
     total_row = await db.fetchrow(count_q, *filter_params)
     total = total_row[0] if total_row else 0
 
     data_q = (
-        f"SELECT * FROM ({base} ORDER BY started_at DESC) sub "
+        f"SELECT * FROM ({base} ORDER BY min_id DESC) sub "
         f"{outer_filter} LIMIT ${n + 1} OFFSET ${n + 2}"
     )
     rows = await db.fetch(data_q, *filter_params, per_page, offset)
@@ -76,9 +78,9 @@ async def list_chat_logs(
         filter_params.append(val)
         return f"${len(filter_params)}"
 
-    date_cond = (f"{_N8N_TS} >= {p(date_from)}::timestamp" if date_from
-                 else f"{_N8N_TS} >= NOW() - INTERVAL '30 days'")
-    date_to_cond = f"AND {_N8N_TS} <= {p(date_to)}::timestamp" if date_to else ""
+    # Date filters apply to leads.created_at (only table with a timestamp)
+    date_cond = f"AND l.created_at >= {p(date_from)}::timestamp" if date_from else ""
+    date_to_cond = f"AND l.created_at <= {p(date_to)}::timestamp" if date_to else ""
     search_cond = f"AND {_N8N_CONTENT} ILIKE {p(f'%{search}%')}" if search else ""
 
     if lead_status == "lead_captured":
@@ -96,10 +98,10 @@ async def list_chat_logs(
         base = _base_cte(date_cond, date_to_cond, search_cond, with_leads=True)
         rows, total = await _fetch_sessions(db, base, outer_filter, list(filter_params), per_page, offset)
     except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):
-        # leads table/column absent — retry without the join
         try:
-            base = _base_cte(date_cond, date_to_cond, search_cond, with_leads=False)
-            rows, total = await _fetch_sessions(db, base, outer_filter, list(filter_params), per_page, offset)
+            base = _base_cte("", "", search_cond, with_leads=False)
+            no_date_params = [p for p in filter_params if search and p == f"%{search}%"] if search else []
+            rows, total = await _fetch_sessions(db, base, outer_filter, no_date_params, per_page, offset)
         except asyncpg.PostgresError as e:
             raise HTTPException(status_code=503, detail=str(e))
     except asyncpg.PostgresError as e:
@@ -123,11 +125,11 @@ async def get_chat_log(
 ):
     try:
         rows = await db.fetch(
-            f"""
-            SELECT id, session_id, message, {_N8N_TS}::text AS created_at
+            """
+            SELECT id, session_id, message
             FROM n8n_chat_histories
             WHERE session_id = $1
-            ORDER BY {_N8N_TS} ASC
+            ORDER BY id ASC
             """,
             session_id,
         )
@@ -145,27 +147,35 @@ async def get_chat_log(
             role = "user" if msg.get("type") == "human" else "oliv"
             content = msg.get("data", {}).get("content", "")
         else:
-            role = r.get("role", "user")
-            content = r.get("content", "")
+            role = "user"
+            content = str(msg or "")
 
         messages.append({
             "id": r.get("id"),
             "role": role,
             "content": content,
-            "created_at": r.get("created_at", ""),
+            "created_at": None,  # n8n table has no timestamp
         })
 
     try:
         lead = await db.fetchrow(
-            "SELECT id, name, phone, email, company, created_at::text FROM leads WHERE session_id = $1 LIMIT 1",
+            """
+            SELECT id, name, company, whatsapp, notes, lead_type,
+                   session_id, created_at::text
+            FROM leads WHERE session_id = $1 LIMIT 1
+            """,
             session_id,
         )
     except asyncpg.PostgresError:
         lead = None
+
+    # Use lead.created_at as the session timestamp since n8n has no timestamp
+    started_at = (dict(lead).get("created_at") if lead else None)
 
     return {
         "session_id": session_id,
         "messages": messages,
         "lead": dict(lead) if lead else None,
         "message_count": len(messages),
+        "started_at": started_at,
     }
