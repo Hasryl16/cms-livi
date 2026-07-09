@@ -54,7 +54,8 @@ class AiApiService
         $response = $this->client()->get("{$this->baseUrl}/api/chat-logs", array_filter($params));
 
         if ($response->failed()) {
-            throw new RuntimeException('Failed to fetch chat logs: ' . $response->status());
+            $detail = $response->json('detail') ?? $response->body();
+            throw new RuntimeException("Failed to fetch chat logs [{$response->status()}]: {$detail}");
         }
 
         return $response->json();
