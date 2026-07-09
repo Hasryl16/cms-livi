@@ -131,9 +131,9 @@ async def get_chat_log(
 ):
     try:
         rows = await db.fetch(
-            f"""
+            """
             SELECT id, session_id, message,
-                   {_N8N_TS}::text AS created_at
+                   created_at::text AS created_at
             FROM n8n_chat_histories
             WHERE session_id = $1
             ORDER BY id ASC
@@ -141,7 +141,7 @@ async def get_chat_log(
             session_id,
         )
     except asyncpg.UndefinedColumnError:
-        # created_at column not yet added — select without it
+        # created_at column not yet added — run the migration SQL to add it
         rows = await db.fetch(
             "SELECT id, session_id, message FROM n8n_chat_histories WHERE session_id = $1 ORDER BY id ASC",
             session_id,
