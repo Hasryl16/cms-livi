@@ -25,9 +25,10 @@ SAMPLE_SESSIONS = [
     }
 ]
 
+# Actual n8n LangChain format: content is flat, not nested under data
 SAMPLE_MESSAGES = [
-    {"id": 1, "session_id": "abc123", "content": "Halo", "created_at": "2026-07-08T10:00:00"},
-    {"id": 2, "session_id": "abc123", "content": "Ada yang bisa dibantu?", "created_at": "2026-07-08T10:00:05"},
+    {"id": 1, "session_id": "abc123", "message": {"type": "human", "content": "Halo", "additional_kwargs": {}, "response_metadata": {}}},
+    {"id": 2, "session_id": "abc123", "message": {"type": "ai", "content": "Ada yang bisa dibantu?", "additional_kwargs": {}, "response_metadata": {}}},
 ]
 
 SAMPLE_LEAD = {
@@ -102,25 +103,28 @@ async def test_get_chat_log_detail_no_lead_returns_none(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_chat_log_normalises_jsonb_message(client, monkeypatch):
-    """Handles n8n's JSONB message column format: {type, data: {content}}"""
-    jsonb_messages = [
-        {
-            "id": 1,
-            "session_id": "s1",
-            "message": {"type": "human", "data": {"content": "Halo"}},
-            "content": None,
-            "role": None,
-            "created_at": "2026-07-08T10:00:00",
-        }
+async def test_get_chat_log_filters_tool_and_tool_call_messages(client, monkeypatch):
+    """tool messages (Qdrant) and ai messages with tool_calls are filtered out."""
+    mixed_messages = [
+        {"id": 1, "session_id": "s1", "message": {"type": "human", "content": "Halo"}},
+        # AI invoking Qdrant — should be filtered
+        {"id": 2, "session_id": "s1", "message": {"type": "ai", "content": "Calling tool", "tool_calls": [{"id": "x"}]}},
+        # Qdrant tool result — should be filtered
+        {"id": 3, "session_id": "s1", "message": {"type": "tool", "content": "[{...}]", "name": "Qdrant_Vector_Store"}},
+        # Final AI response — should appear
+        {"id": 4, "session_id": "s1", "message": {"type": "ai", "content": "Produk LIVI tersedia!"}},
     ]
     mock_conn = MagicMock()
-    mock_conn.fetch = AsyncMock(return_value=jsonb_messages)
+    mock_conn.fetch = AsyncMock(return_value=mixed_messages)
     mock_conn.fetchrow = AsyncMock(return_value=None)
     make_client_with_conn(monkeypatch, mock_conn)
 
     response = await client.get("/api/chat-logs/s1", headers=HEADERS)
     assert response.status_code == 200
-    msg = response.json()["messages"][0]
-    assert msg["role"] == "user"
-    assert msg["content"] == "Halo"
+    msgs = response.json()["messages"]
+    # Only human message + final AI response survive filtering
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[0]["content"] == "Halo"
+    assert msgs[1]["role"] == "oliv"
+    assert msgs[1]["content"] == "Produk LIVI tersedia!"

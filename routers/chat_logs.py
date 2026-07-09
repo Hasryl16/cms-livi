@@ -10,9 +10,13 @@ router = APIRouter()
 #   id SERIAL, session_id VARCHAR(255), message JSONB
 #   — NO timestamp column; use id (auto-increment) for ordering
 #
-# leads schema (confirmed from DB):
-#   id, name, company, whatsapp, notes, lead_type, session_id, created_at
-_N8N_CONTENT = "h.message->'data'->>'content'"
+# LangChain message format stored by n8n:
+#   {"type": "human"|"ai"|"tool", "content": "...", "tool_calls": [...], ...}
+#   content is directly at message->>'content', NOT nested under data
+#   Filter: skip type="tool" (Qdrant results) and type="ai" with tool_calls
+#
+# leads schema: id, name, company, whatsapp, notes, lead_type, session_id, created_at
+_N8N_CONTENT = "h.message->>'content'"
 
 
 def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
@@ -143,18 +147,25 @@ async def get_chat_log(
     for row in rows:
         r = dict(row)
         msg = r.get("message")
-        if isinstance(msg, dict):
-            role = "user" if msg.get("type") == "human" else "oliv"
-            content = msg.get("data", {}).get("content", "")
-        else:
-            role = "user"
-            content = str(msg or "")
+        if not isinstance(msg, dict):
+            continue
+
+        msg_type = msg.get("type", "")
+        content = msg.get("content", "")
+
+        # Skip tool result messages (Qdrant responses) and AI tool-call invocations
+        if msg_type == "tool":
+            continue
+        if msg_type == "ai" and msg.get("tool_calls"):
+            continue
+        if not content or not str(content).strip():
+            continue
 
         messages.append({
             "id": r.get("id"),
-            "role": role,
+            "role": "user" if msg_type == "human" else "oliv",
             "content": content,
-            "created_at": None,  # n8n table has no timestamp
+            "created_at": None,
         })
 
     try:
