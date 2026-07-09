@@ -30,34 +30,40 @@ _N8N_TS = "h.created_at"  # available after ALTER TABLE migration
 
 def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
               with_leads: bool) -> str:
-    if with_leads:
-        return f"""
-            SELECT
-                h.session_id,
-                MIN({_N8N_CONTENT}) AS first_message,
-                COUNT(*) AS msg_count,
-                l.id AS lead_id,
-                l.name AS lead_name,
-                COALESCE(MIN({_N8N_TS}), MIN(l.created_at))::text AS started_at,
-                MIN(h.id) AS min_id
-            FROM n8n_chat_histories h
-            LEFT JOIN leads l ON l.session_id = h.session_id
-            WHERE 1=1 {date_cond} {date_to_cond} {search_cond}
-            GROUP BY h.session_id, l.id, l.name
-        """
-    return f"""
+    n8n_part = f"""
         SELECT
             h.session_id,
             MIN({_N8N_CONTENT}) AS first_message,
             COUNT(*) AS msg_count,
-            NULL::integer AS lead_id,
-            NULL::text AS lead_name,
-            MIN({_N8N_TS})::text AS started_at,
-            MIN(h.id) AS min_id
+            l.id AS lead_id,
+            l.name AS lead_name,
+            COALESCE(MIN({_N8N_TS}), MIN(l.created_at))::text AS started_at,
+            MIN(h.id)::bigint AS min_id
         FROM n8n_chat_histories h
-        WHERE 1=1 {search_cond}
-        GROUP BY h.session_id
+        LEFT JOIN leads l ON l.session_id = h.session_id
+        WHERE 1=1 {date_cond} {date_to_cond} {search_cond}
+        GROUP BY h.session_id, l.id, l.name
     """
+    if not with_leads:
+        return n8n_part
+
+    # Lead-only sessions: quick-reply flows that never sent a message to n8n AI
+    lead_only = f"""
+        SELECT
+            l.session_id,
+            '[Lead form submitted]'::text AS first_message,
+            0::bigint AS msg_count,
+            l.id AS lead_id,
+            l.name AS lead_name,
+            l.created_at::text AS started_at,
+            NULL::bigint AS min_id
+        FROM leads l
+        WHERE NOT EXISTS (
+            SELECT 1 FROM n8n_chat_histories h WHERE h.session_id = l.session_id
+        )
+        {date_cond.replace('h.', 'l.')} {date_to_cond.replace('h.', 'l.')}
+    """
+    return f"({n8n_part} UNION ALL {lead_only})"
 
 
 async def _fetch_sessions(db: Connection, base: str, outer_filter: str,
@@ -68,7 +74,7 @@ async def _fetch_sessions(db: Connection, base: str, outer_filter: str,
     total = total_row[0] if total_row else 0
 
     data_q = (
-        f"SELECT * FROM ({base} ORDER BY min_id DESC) sub "
+        f"SELECT * FROM ({base} ORDER BY started_at DESC NULLS LAST) sub "
         f"{outer_filter} LIMIT ${n + 1} OFFSET ${n + 2}"
     )
     rows = await db.fetch(data_q, *filter_params, per_page, offset)
@@ -159,9 +165,6 @@ async def get_chat_log(
     except asyncpg.PostgresError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    if not rows:
-        raise HTTPException(status_code=404, detail="Session not found")
-
     messages = []
     for row in rows:
         r = dict(row)
@@ -202,6 +205,10 @@ async def get_chat_log(
         )
     except asyncpg.PostgresError:
         lead = None
+
+    # 404 only if no n8n messages AND no lead record
+    if not messages and not lead:
+        raise HTTPException(status_code=404, detail="Session not found")
 
     # started_at: prefer first message's timestamp, fall back to lead.created_at
     started_at = (messages[0].get("created_at") if messages else None) \
