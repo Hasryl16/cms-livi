@@ -27,6 +27,12 @@ router = APIRouter()
 _N8N_CONTENT = "h.message->>'content'"
 _N8N_TS = "h.created_at"  # available after ALTER TABLE migration
 
+# First human message in the session (chronological, not alphabetical)
+_N8N_FIRST_MSG = (
+    "(array_agg(h.message->>'content' ORDER BY h.id)"
+    " FILTER (WHERE h.message->>'type' = 'human'))[1]"
+)
+
 
 def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
               has_ts: bool = True) -> str:
@@ -42,7 +48,7 @@ def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
     n8n_part = f"""
         SELECT
             h.session_id,
-            MIN({_N8N_CONTENT}) AS first_message,
+            {_N8N_FIRST_MSG} AS first_message,
             COUNT(*) AS msg_count,
             l.id AS lead_id,
             l.name AS lead_name,
