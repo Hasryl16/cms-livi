@@ -8,12 +8,6 @@
         </a>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr;gap:24px;">
-        @media (min-width: 1024px) {
-            .chat-grid { grid-template-columns: 2fr 1fr; }
-        }
-    </div>
-
     <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:24px;">
 
         {{-- Chat thread --}}
