@@ -72,7 +72,7 @@ def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
         )
         {lead_date_cond} {lead_date_to_cond}
     """
-    return f"({n8n_part} UNION ALL {lead_only})"
+    return f"{n8n_part} UNION ALL {lead_only}"
 
 
 async def _fetch_sessions(db: Connection, base: str, outer_filter: str,
