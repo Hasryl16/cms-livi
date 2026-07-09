@@ -26,7 +26,7 @@
                                 {{ $msg['content'] ?? '' }}
                             </div>
                             <div style="font-size:11px;color:#9ca3af;margin-top:4px;text-align:{{ $isUser ? 'right' : 'left' }};">
-                                {{ isset($msg['created_at']) ? \Carbon\Carbon::parse($msg['created_at'])->format('H:i') : '' }}
+                                {{ isset($msg['created_at']) ? \Carbon\Carbon::parse($msg['created_at'])->setTimezone('Asia/Jakarta')->format('H:i') : '' }}
                             </div>
                         </div>
                     </div>
@@ -53,7 +53,7 @@
                     </div>
                     <div>
                         <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">Started At</div>
-                        <div style="color:#374151;">{{ $startedAt ? \Carbon\Carbon::parse($startedAt)->format('d M Y, H:i') : '—' }}</div>
+                        <div style="color:#374151;">{{ $startedAt ? \Carbon\Carbon::parse($startedAt)->setTimezone('Asia/Jakarta')->format('d M Y, H:i') : '—' }}</div>
                     </div>
                 </div>
             </div>
@@ -91,7 +91,7 @@
                         @endif
                         <div>
                             <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">Captured At</div>
-                            <div style="color:#374151;">{{ isset($lead['created_at']) ? \Carbon\Carbon::parse($lead['created_at'])->format('d M Y, H:i') : '—' }}</div>
+                            <div style="color:#374151;">{{ isset($lead['created_at']) ? \Carbon\Carbon::parse($lead['created_at'])->setTimezone('Asia/Jakarta')->format('d M Y, H:i') : '—' }}</div>
                         </div>
                     </div>
                     <div style="margin-top:12px;">

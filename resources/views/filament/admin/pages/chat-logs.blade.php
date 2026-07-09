@@ -132,7 +132,7 @@
                                     @endif
                                 </td>
                                 <td style="padding:12px 16px;color:#6b7280;font-size:12px;white-space:nowrap;">
-                                    {{ isset($session['started_at']) ? \Carbon\Carbon::parse($session['started_at'])->format('d M Y, H:i') : '—' }}
+                                    {{ isset($session['started_at']) ? \Carbon\Carbon::parse($session['started_at'])->setTimezone('Asia/Jakarta')->format('d M Y, H:i') : '—' }}
                                 </td>
                                 <td style="padding:12px 16px;text-align:right;">
                                     <a href="{{ $this->detailUrl($session['session_id']) }}"
