@@ -1,9 +1,17 @@
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
 from asyncpg import Connection
 from db import get_db
 from typing import Optional
 
 router = APIRouter()
+
+# n8n Postgres Chat Memory stores messages as JSONB in the `message` column.
+# Timestamp column is "createdAt" (camelCase) in n8n v1+.
+# Content lives at: message->'data'->>'content'
+# Role lives at: message->>'type'  ("human" | "ai")
+_N8N_CONTENT = "h.message->'data'->>'content'"
+_N8N_TS = 'h."createdAt"'
 
 
 @router.get("/chat-logs")
@@ -23,12 +31,12 @@ async def list_chat_logs(
         return f"${len(params)}"
 
     if date_from:
-        date_cond = f"h.created_at >= {p(date_from)}::timestamp"
+        date_cond = f'{_N8N_TS} >= {p(date_from)}::timestamp'
     else:
-        date_cond = "h.created_at >= NOW() - INTERVAL '30 days'"
+        date_cond = f"{_N8N_TS} >= NOW() - INTERVAL '30 days'"
 
-    date_to_cond = f"AND h.created_at <= {p(date_to)}::timestamp" if date_to else ""
-    search_cond = f"AND h.content ILIKE {p(f'%{search}%')}" if search else ""
+    date_to_cond = f"AND {_N8N_TS} <= {p(date_to)}::timestamp" if date_to else ""
+    search_cond = f"AND {_N8N_CONTENT} ILIKE {p(f'%{search}%')}" if search else ""
 
     if lead_status == "lead_captured":
         outer_filter = "WHERE lead_id IS NOT NULL"
@@ -42,30 +50,37 @@ async def list_chat_logs(
     base_cte = f"""
         SELECT
             h.session_id,
-            MIN(h.content) AS first_message,
+            MIN({_N8N_CONTENT}) AS first_message,
             COUNT(*) AS msg_count,
             l.id AS lead_id,
             l.name AS lead_name,
-            MIN(h.created_at)::text AS started_at
+            MIN({_N8N_TS})::text AS started_at
         FROM n8n_chat_histories h
         LEFT JOIN leads l ON l.session_id = h.session_id
         WHERE {date_cond} {date_to_cond} {search_cond}
         GROUP BY h.session_id, l.id, l.name
     """
 
-    count_params = list(params)
-    count_q = f"SELECT COUNT(*) FROM ({base_cte}) sub {outer_filter}"
-    total_row = await db.fetchrow(count_q, *count_params)
-    total = total_row[0] if total_row else 0
+    try:
+        count_params = list(params)
+        count_q = f"SELECT COUNT(*) FROM ({base_cte}) sub {outer_filter}"
+        total_row = await db.fetchrow(count_q, *count_params)
+        total = total_row[0] if total_row else 0
 
-    limit_ph = p(per_page)
-    offset_ph = p((page - 1) * per_page)
-    data_q = f"""
-        SELECT * FROM ({base_cte} ORDER BY started_at DESC) sub
-        {outer_filter}
-        LIMIT {limit_ph} OFFSET {offset_ph}
-    """
-    rows = await db.fetch(data_q, *params)
+        limit_ph = p(per_page)
+        offset_ph = p((page - 1) * per_page)
+        data_q = f"""
+            SELECT * FROM ({base_cte} ORDER BY started_at DESC) sub
+            {outer_filter}
+            LIMIT {limit_ph} OFFSET {offset_ph}
+        """
+        rows = await db.fetch(data_q, *params)
+    except asyncpg.UndefinedTableError as e:
+        raise HTTPException(status_code=503, detail=f"Required table not found: {e}")
+    except asyncpg.UndefinedColumnError as e:
+        raise HTTPException(status_code=503, detail=f"Column mismatch — check n8n table schema: {e}")
+    except asyncpg.PostgresError as e:
+        raise HTTPException(status_code=503, detail=f"Database error: {e}")
 
     return {
         "data": [dict(r) for r in rows],
@@ -83,10 +98,20 @@ async def get_chat_log(
     session_id: str,
     db: Connection = Depends(get_db),
 ):
-    rows = await db.fetch(
-        "SELECT * FROM n8n_chat_histories WHERE session_id = $1 ORDER BY created_at ASC",
-        session_id,
-    )
+    try:
+        rows = await db.fetch(
+            f"""
+            SELECT id, session_id, message, {_N8N_TS}::text AS created_at
+            FROM n8n_chat_histories
+            WHERE session_id = $1
+            ORDER BY {_N8N_TS} ASC
+            """,
+            session_id,
+        )
+    except asyncpg.UndefinedTableError as e:
+        raise HTTPException(status_code=503, detail=f"Required table not found: {e}")
+    except asyncpg.PostgresError as e:
+        raise HTTPException(status_code=503, detail=f"Database error: {e}")
 
     if not rows:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -94,9 +119,8 @@ async def get_chat_log(
     messages = []
     for row in rows:
         r = dict(row)
-        # Handle both JSONB `message` column and plain `content`/`role` columns
-        if "message" in r and isinstance(r.get("message"), dict):
-            msg = r["message"]
+        msg = r.get("message")
+        if isinstance(msg, dict):
             role = "user" if msg.get("type") == "human" else "oliv"
             content = msg.get("data", {}).get("content", "")
         else:
@@ -107,16 +131,16 @@ async def get_chat_log(
             "id": r.get("id"),
             "role": role,
             "content": content,
-            "created_at": str(r.get("created_at", "")),
+            "created_at": r.get("created_at", ""),
         })
 
-    lead = await db.fetchrow(
-        """
-        SELECT id, name, phone, email, company, created_at::text
-        FROM leads WHERE session_id = $1 LIMIT 1
-        """,
-        session_id,
-    )
+    try:
+        lead = await db.fetchrow(
+            "SELECT id, name, phone, email, company, created_at::text FROM leads WHERE session_id = $1 LIMIT 1",
+            session_id,
+        )
+    except asyncpg.PostgresError:
+        lead = None
 
     return {
         "session_id": session_id,
