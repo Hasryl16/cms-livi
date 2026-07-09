@@ -1,4 +1,5 @@
 import asyncpg
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from asyncpg import Connection
 from db import get_db
@@ -84,9 +85,12 @@ async def list_chat_logs(
         filter_params.append(val)
         return f"${len(filter_params)}"
 
-    # Date filters on n8n_chat_histories.created_at (after migration adds the column)
-    date_cond = f"AND {_N8N_TS} >= {p(date_from)}::timestamp" if date_from else ""
-    date_to_cond = f"AND {_N8N_TS} <= {p(date_to)}::timestamp" if date_to else ""
+    # Parse date strings to datetime — asyncpg requires datetime objects, not strings
+    def parse_date(s: str) -> datetime:
+        return datetime.strptime(s, "%Y-%m-%d")
+
+    date_cond = f"AND {_N8N_TS} >= {p(parse_date(date_from))}" if date_from else ""
+    date_to_cond = f"AND {_N8N_TS} <= {p(parse_date(date_to))}" if date_to else ""
     search_cond = f"AND {_N8N_CONTENT} ILIKE {p(f'%{search}%')}" if search else ""
 
     if lead_status == "lead_captured":
