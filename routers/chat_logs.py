@@ -1,9 +1,15 @@
 import asyncpg
+import re
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from asyncpg import Connection
 from db import get_db
 from typing import Optional
+
+_FUNC_TAG_RE = re.compile(r'<function=[^>]+>.*?</function>', re.DOTALL)
+
+def _clean_content(text: str) -> str:
+    return _FUNC_TAG_RE.sub('', text).strip()
 
 router = APIRouter()
 
@@ -174,10 +180,14 @@ async def get_chat_log(
         if not content or not str(content).strip():
             continue
 
+        clean = _clean_content(str(content))
+        if not clean:
+            continue
+
         messages.append({
             "id": r.get("id"),
             "role": "user" if msg_type == "human" else "oliv",
-            "content": content,
+            "content": clean,
             "created_at": r.get("created_at"),
         })
 
