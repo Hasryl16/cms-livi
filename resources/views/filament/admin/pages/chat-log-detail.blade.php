@@ -18,21 +18,50 @@
             </div>
 
             <div style="padding:16px;display:flex;flex-direction:column;gap:12px;max-height:600px;overflow-y:auto;background:#f7f8fa;">
-                @forelse ($messages as $msg)
-                    @php $isUser = in_array($msg['role'] ?? '', ['user', 'human']); @endphp
-                    <div style="display:flex;{{ $isUser ? 'justify-content:flex-end' : 'justify-content:flex-start' }};">
-                        <div style="max-width:78%;">
-                            <div style="padding:10px 16px;font-size:13px;line-height:1.5;border-radius:{{ $isUser ? '9999px;border:2px solid #d1d5db;background:white' : '16px;background:#eeeeec' }};color:#1f2937;">
-                                {{ $msg['content'] ?? '' }}
+                @if (count($messages) > 0)
+                    @foreach ($messages as $msg)
+                        @php $isUser = in_array($msg['role'] ?? '', ['user', 'human']); @endphp
+                        <div style="display:flex;{{ $isUser ? 'justify-content:flex-end' : 'justify-content:flex-start' }};">
+                            <div style="max-width:78%;">
+                                <div style="padding:10px 16px;font-size:13px;line-height:1.5;border-radius:{{ $isUser ? '9999px;border:2px solid #d1d5db;background:white' : '16px;background:#eeeeec' }};color:#1f2937;">
+                                    {{ $msg['content'] ?? '' }}
+                                </div>
+                                <div style="font-size:11px;color:#9ca3af;margin-top:4px;text-align:{{ $isUser ? 'right' : 'left' }};">
+                                    {{ isset($msg['created_at']) ? \Carbon\Carbon::parse($msg['created_at'])->setTimezone('Asia/Jakarta')->format('H:i') : '' }}
+                                </div>
                             </div>
-                            <div style="font-size:11px;color:#9ca3af;margin-top:4px;text-align:{{ $isUser ? 'right' : 'left' }};">
-                                {{ isset($msg['created_at']) ? \Carbon\Carbon::parse($msg['created_at'])->setTimezone('Asia/Jakarta')->format('H:i') : '' }}
+                        </div>
+                    @endforeach
+                @elseif ($lead)
+                    {{-- Lead captured via quick-reply flow — no AI conversation messages --}}
+                    <div style="display:flex;justify-content:flex-end;">
+                        <div style="max-width:78%;">
+                            <div style="padding:10px 16px;font-size:13px;line-height:1.5;border-radius:9999px;border:2px solid #d1d5db;background:white;color:#1f2937;">
+                                @if (($lead['lead_type'] ?? '') === 'distributor')
+                                    Menjadi Partner LIVI
+                                @elseif (($lead['lead_type'] ?? '') === 'product_info')
+                                    Informasi Produk
+                                @else
+                                    [Lead form submitted]
+                                @endif
                             </div>
                         </div>
                     </div>
-                @empty
+                    <div style="display:flex;justify-content:flex-start;">
+                        <div style="max-width:78%;">
+                            <div style="padding:10px 16px;font-size:13px;line-height:1.5;border-radius:16px;background:#eeeeec;color:#1f2937;">
+                                Terima kasih, {{ $lead['name'] ?? '' }}! Data Anda sudah kami terima. Tim sales kami akan segera menghubungi Anda via WhatsApp dalam 1×24 jam.
+                            </div>
+                            @if (!empty($lead['created_at']))
+                                <div style="font-size:11px;color:#9ca3af;margin-top:4px;">
+                                    {{ \Carbon\Carbon::parse($lead['created_at'])->setTimezone('Asia/Jakarta')->format('H:i') }}
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                @else
                     <p style="font-size:13px;text-align:center;color:#9ca3af;padding:32px 0;">No messages in this session.</p>
-                @endforelse
+                @endif
             </div>
         </div>
 
@@ -49,7 +78,9 @@
                     </div>
                     <div>
                         <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">Messages</div>
-                        <div style="color:#374151;">{{ $messageCount }}</div>
+                        <div style="color:#374151;">
+                            {{ $messageCount > 0 ? $messageCount : ($lead ? 'Lead form only' : '0') }}
+                        </div>
                     </div>
                     <div>
                         <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">Started At</div>
