@@ -16,7 +16,9 @@ router = APIRouter()
 #   Filter: skip type="tool" (Qdrant results) and type="ai" with tool_calls
 #
 # leads schema: id, name, company, whatsapp, notes, lead_type, session_id, created_at
+# After running migration add_created_at.sql, n8n_chat_histories also has created_at
 _N8N_CONTENT = "h.message->>'content'"
+_N8N_TS = "h.created_at"  # available after ALTER TABLE migration
 
 
 def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
@@ -29,7 +31,7 @@ def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
                 COUNT(*) AS msg_count,
                 l.id AS lead_id,
                 l.name AS lead_name,
-                MIN(l.created_at)::text AS started_at,
+                COALESCE(MIN({_N8N_TS}), MIN(l.created_at))::text AS started_at,
                 MIN(h.id) AS min_id
             FROM n8n_chat_histories h
             LEFT JOIN leads l ON l.session_id = h.session_id
@@ -43,7 +45,7 @@ def _base_cte(date_cond: str, date_to_cond: str, search_cond: str,
             COUNT(*) AS msg_count,
             NULL::integer AS lead_id,
             NULL::text AS lead_name,
-            NULL::text AS started_at,
+            MIN({_N8N_TS})::text AS started_at,
             MIN(h.id) AS min_id
         FROM n8n_chat_histories h
         WHERE 1=1 {search_cond}
@@ -82,9 +84,9 @@ async def list_chat_logs(
         filter_params.append(val)
         return f"${len(filter_params)}"
 
-    # Date filters apply to leads.created_at (only table with a timestamp)
-    date_cond = f"AND l.created_at >= {p(date_from)}::timestamp" if date_from else ""
-    date_to_cond = f"AND l.created_at <= {p(date_to)}::timestamp" if date_to else ""
+    # Date filters on n8n_chat_histories.created_at (after migration adds the column)
+    date_cond = f"AND {_N8N_TS} >= {p(date_from)}::timestamp" if date_from else ""
+    date_to_cond = f"AND {_N8N_TS} <= {p(date_to)}::timestamp" if date_to else ""
     search_cond = f"AND {_N8N_CONTENT} ILIKE {p(f'%{search}%')}" if search else ""
 
     if lead_status == "lead_captured":
@@ -129,12 +131,19 @@ async def get_chat_log(
 ):
     try:
         rows = await db.fetch(
-            """
-            SELECT id, session_id, message
+            f"""
+            SELECT id, session_id, message,
+                   {_N8N_TS}::text AS created_at
             FROM n8n_chat_histories
             WHERE session_id = $1
             ORDER BY id ASC
             """,
+            session_id,
+        )
+    except asyncpg.UndefinedColumnError:
+        # created_at column not yet added — select without it
+        rows = await db.fetch(
+            "SELECT id, session_id, message FROM n8n_chat_histories WHERE session_id = $1 ORDER BY id ASC",
             session_id,
         )
     except asyncpg.PostgresError as e:
@@ -165,7 +174,7 @@ async def get_chat_log(
             "id": r.get("id"),
             "role": "user" if msg_type == "human" else "oliv",
             "content": content,
-            "created_at": None,
+            "created_at": r.get("created_at"),
         })
 
     try:
@@ -180,8 +189,9 @@ async def get_chat_log(
     except asyncpg.PostgresError:
         lead = None
 
-    # Use lead.created_at as the session timestamp since n8n has no timestamp
-    started_at = (dict(lead).get("created_at") if lead else None)
+    # started_at: prefer first message's timestamp, fall back to lead.created_at
+    started_at = (messages[0].get("created_at") if messages else None) \
+                 or (dict(lead).get("created_at") if lead else None)
 
     return {
         "session_id": session_id,
