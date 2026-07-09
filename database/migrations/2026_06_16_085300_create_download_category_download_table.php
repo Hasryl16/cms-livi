@@ -8,21 +8,23 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('download_category_download', function (Blueprint $table) {
+        if (! Schema::hasTable('download_category_download')) {
+            Schema::create('download_category_download', function (Blueprint $table) {
 
-            $table->foreignId('download_id')
-                ->constrained()
-                ->cascadeOnDelete();
+                $table->foreignId('download_id')
+                    ->constrained()
+                    ->cascadeOnDelete();
 
-            $table->foreignId('download_category_id')
-                ->constrained()
-                ->cascadeOnDelete();
+                $table->foreignId('download_category_id')
+                    ->constrained()
+                    ->cascadeOnDelete();
 
-            $table->primary([
-                'download_id',
-                'download_category_id',
-            ]);
-        });
+                $table->primary([
+                    'download_id',
+                    'download_category_id',
+                ]);
+            });
+        }
     }
 
     public function down(): void

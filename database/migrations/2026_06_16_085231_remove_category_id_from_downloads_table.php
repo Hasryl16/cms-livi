@@ -10,8 +10,10 @@ return new class extends Migration
     {
         Schema::table('downloads', function (Blueprint $table) {
 
-            $table->dropForeign(['category_id']);
-            $table->dropColumn('category_id');
+            if (Schema::hasColumn('downloads', 'category_id')) {
+                $table->dropForeign(['category_id']);
+                $table->dropColumn('category_id');
+            }
 
         });
     }

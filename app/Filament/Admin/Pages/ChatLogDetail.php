@@ -36,7 +36,7 @@ class ChatLogDetail extends Page
             $this->messages     = $data['messages'] ?? [];
             $this->lead         = $data['lead'] ?? null;
             $this->messageCount = $data['message_count'] ?? 0;
-            $this->startedAt    = $this->messages[0]['created_at'] ?? '';
+            $this->startedAt    = $data['started_at'] ?? $this->lead['created_at'] ?? '';
         } catch (Throwable $e) {
             Notification::make()
                 ->title('Failed to load session')

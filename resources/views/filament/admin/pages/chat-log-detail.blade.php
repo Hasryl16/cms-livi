@@ -74,13 +74,19 @@
                             <div style="color:#374151;">{{ $lead['name'] ?? '—' }}</div>
                         </div>
                         <div>
-                            <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">Phone / WhatsApp</div>
-                            <div style="color:#374151;">{{ $lead['phone'] ?? '—' }}</div>
+                            <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">WhatsApp</div>
+                            <div style="color:#374151;">{{ $lead['whatsapp'] ?? '—' }}</div>
                         </div>
-                        @if (!empty($lead['email']))
+                        @if (!empty($lead['notes']))
                         <div>
-                            <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">Email</div>
-                            <div style="color:#374151;">{{ $lead['email'] }}</div>
+                            <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">Notes</div>
+                            <div style="color:#374151;">{{ $lead['notes'] }}</div>
+                        </div>
+                        @endif
+                        @if (!empty($lead['lead_type']))
+                        <div>
+                            <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;">Type</div>
+                            <div style="color:#374151;">{{ $lead['lead_type'] }}</div>
                         </div>
                         @endif
                         @if (!empty($lead['company']))
