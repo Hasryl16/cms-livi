@@ -125,4 +125,15 @@ class AiApiService
 
         return $response->json();
     }
+
+    public function getAnalytics(): array
+    {
+        $response = $this->client()->timeout(30)->get("{$this->baseUrl}/api/analytics");
+
+        if ($response->failed()) {
+            throw new RuntimeException('Failed to fetch analytics: ' . $response->status());
+        }
+
+        return $response->json();
+    }
 }
