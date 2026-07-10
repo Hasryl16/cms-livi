@@ -6,10 +6,12 @@ use App\Services\AiApiService;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
+use Livewire\WithFileUploads;
 use Throwable;
 
 class KnowledgeBase extends Page
 {
+    use WithFileUploads;
     protected string $view = 'filament.admin.pages.knowledge-base';
 
     protected static \UnitEnum|string|null $navigationGroup = 'AI Chatbot';
@@ -21,6 +23,7 @@ class KnowledgeBase extends Page
     public array $documents = [];
     public array $stats = ['total' => 0, 'processing' => 0, 'failed' => 0, 'indexed' => 0];
     public bool $showUploadModal = false;
+    public $document = null;
 
     public function mount(): void
     {
@@ -46,29 +49,30 @@ class KnowledgeBase extends Page
 
     public function closeUploadModal(): void
     {
+        $this->document = null;
         $this->showUploadModal = false;
     }
 
     public function uploadDocument(): void
     {
-        $file = request()->file('document');
-        if (!$file) {
+        if (!$this->document) {
             Notification::make()->title('No file selected')->warning()->send();
             return;
         }
 
-        $ext = strtolower($file->getClientOriginalExtension());
+        $ext = strtolower($this->document->getClientOriginalExtension());
         if (!in_array($ext, ['pdf', 'docx', 'xlsx'])) {
             Notification::make()->title('Invalid file type')->body('Only PDF, DOCX, and XLSX are supported.')->danger()->send();
             return;
         }
-        if ($file->getSize() > 50 * 1024 * 1024) {
+        if ($this->document->getSize() > 50 * 1024 * 1024) {
             Notification::make()->title('File too large')->body('Maximum file size is 50 MB.')->danger()->send();
             return;
         }
 
         try {
-            app(AiApiService::class)->ingestDocument($file);
+            app(AiApiService::class)->ingestDocument($this->document);
+            $this->document = null;
             $this->showUploadModal = false;
             $this->loadDocuments();
             Notification::make()->title('Document uploaded')->body('Processing has started in the background.')->success()->send();

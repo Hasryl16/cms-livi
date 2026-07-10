@@ -184,13 +184,14 @@
             <button wire:click="closeUploadModal" style="background:none;border:none;font-size:22px;color:#9ca3af;cursor:pointer;line-height:1;">×</button>
         </div>
 
-        <form wire:submit.prevent="uploadDocument" enctype="multipart/form-data">
+        <form wire:submit.prevent="uploadDocument">
             <div style="margin-bottom:16px;">
                 <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:6px;">Select File</label>
                 <input type="file"
-                       name="document"
+                       wire:model="document"
                        accept=".pdf,.docx,.xlsx"
                        style="display:block;width:100%;font-size:13px;color:#374151;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;background:#f9fafb;" />
+                @error('document') <span style="font-size:11px;color:#dc2626;">{{ $message }}</span> @enderror
             </div>
             <div style="background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:20px;font-size:12px;color:#6b7280;line-height:1.6;">
                 <div>Supported: <strong>PDF, DOCX, XLSX</strong> &middot; Max size: <strong>50 MB</strong></div>
@@ -198,7 +199,10 @@
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
                 <button type="button" wire:click="closeUploadModal" class="ai-btn ai-btn-secondary">Cancel</button>
-                <button type="submit" class="ai-btn ai-btn-primary">Upload & Process</button>
+                <button type="submit" class="ai-btn ai-btn-primary" wire:loading.attr="disabled" wire:target="document,uploadDocument">
+                    <span wire:loading.remove wire:target="document,uploadDocument">Upload & Process</span>
+                    <span wire:loading wire:target="document,uploadDocument">Processing...</span>
+                </button>
             </div>
         </form>
     </div>
