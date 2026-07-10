@@ -75,4 +75,54 @@ class AiApiService
 
         return $response->json();
     }
+
+    public function getKnowledgeBaseDocuments(): array
+    {
+        $response = $this->client()->timeout(30)->get("{$this->baseUrl}/api/knowledge-base/documents");
+
+        if ($response->failed()) {
+            throw new RuntimeException('Failed to fetch documents: ' . $response->status());
+        }
+
+        return $response->json();
+    }
+
+    public function ingestDocument(\Illuminate\Http\UploadedFile $file): array
+    {
+        $response = Http::withHeaders(['X-API-Key' => $this->apiKey])
+            ->timeout(60)
+            ->attach('file', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
+            ->post("{$this->baseUrl}/api/knowledge-base/ingest");
+
+        if ($response->failed()) {
+            $detail = $response->json('detail') ?? $response->body();
+            throw new RuntimeException("Upload failed: {$detail}");
+        }
+
+        return $response->json();
+    }
+
+    public function rollbackDocument(int $id): array
+    {
+        $response = $this->client()->timeout(30)->post("{$this->baseUrl}/api/knowledge-base/{$id}/rollback");
+
+        if ($response->failed()) {
+            $detail = $response->json('detail') ?? $response->body();
+            throw new RuntimeException("Rollback failed: {$detail}");
+        }
+
+        return $response->json();
+    }
+
+    public function retryDocument(int $id): array
+    {
+        $response = $this->client()->timeout(30)->post("{$this->baseUrl}/api/knowledge-base/{$id}/retry");
+
+        if ($response->failed()) {
+            $detail = $response->json('detail') ?? $response->body();
+            throw new RuntimeException("Retry failed: {$detail}");
+        }
+
+        return $response->json();
+    }
 }
