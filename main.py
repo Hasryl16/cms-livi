@@ -6,6 +6,8 @@ from db import lifespan
 from auth import verify_api_key
 from routers import config as config_router
 from routers import chat_logs as chat_logs_router
+from routers import knowledge_base as kb_router
+from routers import analytics as analytics_router
 
 app = FastAPI(title="LIVI AI API", lifespan=lifespan)
 
@@ -17,6 +19,18 @@ app.include_router(
 
 app.include_router(
     chat_logs_router.router,
+    prefix="/api",
+    dependencies=[Depends(verify_api_key)],
+)
+
+app.include_router(
+    kb_router.router,
+    prefix="/api",
+    dependencies=[Depends(verify_api_key)],
+)
+
+app.include_router(
+    analytics_router.router,
     prefix="/api",
     dependencies=[Depends(verify_api_key)],
 )
