@@ -1,181 +1,60 @@
 # livi-ai-api
 
-FastAPI service that acts as the API gateway between the LIVI CMS (Laravel/Filament) and the AI infrastructure (PostgreSQL, Qdrant, n8n) on the AI VPS.
+FastAPI service that acts as the API gateway between the LIVI CMS (Laravel/Filament) and the AI infrastructure (PostgreSQL, Qdrant, n8n).
 
-The CMS never touches the AI database directly — all reads and writes go through this service, authenticated with a shared API key.
+The CMS never touches the AI database directly — all reads and writes go through this service, authenticated with a shared API key (`X-API-Key` header).
 
----
-
-## Requirements
-
-- Python 3.11+
-- PostgreSQL 14+ (the same instance used by n8n)
-
----
-
-## Local Setup
-
-### 1. Clone and create a virtual environment
+## Quick Start
 
 ```bash
-cd /home/hasryl/livi/livi-ai-api
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 2. Install dependencies
-
-```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env   # fill in all 7 variables
+uvicorn main:app --reload --port 8001
+curl http://localhost:8001/health
 ```
 
-> If `asyncpg` fails to build, install it without isolation:
-> ```bash
-> pip install asyncpg --no-build-isolation
-> ```
+See [`docs/SETUP.md`](docs/SETUP.md) for full setup and production deployment instructions.
 
-### 3. Create your `.env`
+## Endpoints
 
-```bash
-cp .env.example .env
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check (no auth) |
+| GET | `/api/config` | Get chatbot config (system prompt, keywords, welcome msg) |
+| PUT | `/api/config` | Update a config value |
+| GET | `/api/chat-logs` | List sessions (paginated, filterable by date/lead/search) |
+| GET | `/api/chat-logs/{session_id}` | Full transcript for a session |
+| GET | `/api/knowledge-base/documents` | List all documents + ingestion status |
+| POST | `/api/knowledge-base/ingest` | Upload PDF/DOCX/XLSX for ingestion |
+| POST | `/api/knowledge-base/{doc_id}/rollback` | Roll back to previous document version |
+| POST | `/api/knowledge-base/{doc_id}/retry` | Retry a failed ingestion |
+| POST | `/api/knowledge-base/search` | Semantic search in knowledge base |
+| DELETE | `/api/knowledge-base/{doc_id}` | Delete document and its Qdrant vectors |
+| GET | `/api/analytics` | 4 metric datasets for the analytics dashboard |
 
-Edit `.env`:
+Full request/response schemas: [`docs/API.md`](docs/API.md)
 
-```env
-DATABASE_URL=postgresql://postgres:password@localhost:5432/livi_db
-CMS_API_KEY=local-dev-secret
-```
+## Environment Variables
 
-Use the same PostgreSQL database that n8n is connected to (or a local test DB — see step 4).
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `CMS_API_KEY` | Shared secret — must match `AI_API_KEY` in cms-livi `.env` |
+| `COHERE_API_KEY` | For document embeddings and search queries |
+| `QDRANT_URL` | Qdrant base URL (use `http://`, not `https://`) |
+| `QDRANT_API_KEY` | Qdrant authentication key |
+| `QDRANT_COLLECTION` | Collection name (default: `livi_cohere`) |
+| `QDRANT_DIRECT_IP` | VPS IP for Cloudflare bypass — routes Qdrant traffic directly |
 
-### 4. Run the database migrations
+## Documentation
 
-```bash
-psql $DATABASE_URL -f migrations/001_chatbot_config.sql
-psql $DATABASE_URL -f migrations/002_knowledge_base_documents.sql
-psql $DATABASE_URL -f migrations/003_conversation_analytics.sql
-```
+- [`docs/API.md`](docs/API.md) — full endpoint reference with request/response examples
+- [`docs/SETUP.md`](docs/SETUP.md) — local setup and production deployment
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and design decisions
 
-This creates the 3 tables and seeds `chatbot_config` with default values.
-
-### 5. Start the server
-
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-The API is now running at `http://localhost:8000`.
-
----
-
-## Verify it's working
-
-```bash
-# Health check (no auth needed)
-curl http://localhost:8000/health
-
-# Get all chatbot config (requires API key)
-curl http://localhost:8000/api/config \
-  -H "X-API-Key: local-dev-secret"
-
-# Update a config value
-curl -X PUT http://localhost:8000/api/config \
-  -H "X-API-Key: local-dev-secret" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "system_prompt", "value": "Kamu adalah OLIV...", "updated_by": "hasryl"}'
-```
-
----
-
-## Run tests
-
-Tests use mocked DB — no real Postgres needed.
+## Tests
 
 ```bash
 python3 -m pytest tests/ -v
 ```
-
-Expected output: **7 passed**
-
----
-
-## API Reference
-
-All endpoints (except `/health`) require the `X-API-Key` header.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check |
-| `GET` | `/api/config` | Get all chatbot config values |
-| `PUT` | `/api/config` | Update a config value |
-
-### PUT /api/config
-
-Request body:
-
-```json
-{
-  "key": "system_prompt",
-  "value": "Kamu adalah OLIV...",
-  "updated_by": "hasryl"
-}
-```
-
-Valid keys: `system_prompt`, `welcome_message`, `lead_trigger_keywords`
-
----
-
-## Project Structure
-
-```
-livi-ai-api/
-├── main.py                  # FastAPI app entry point
-├── auth.py                  # X-API-Key header verification
-├── db.py                    # asyncpg connection pool
-├── schemas.py               # Pydantic request/response models
-├── routers/
-│   └── config.py            # GET + PUT /api/config
-├── migrations/
-│   ├── 001_chatbot_config.sql
-│   ├── 002_knowledge_base_documents.sql
-│   └── 003_conversation_analytics.sql
-├── tests/
-│   ├── conftest.py          # Mock DB fixture
-│   ├── test_auth.py         # Auth tests (401/403)
-│   └── test_config.py       # Config endpoint tests
-├── requirements.txt
-└── .env.example
-```
-
----
-
-## Deployment (AI VPS — 103.77.107.162)
-
-```bash
-# Copy files to VPS
-scp -r . user@103.77.107.162:/opt/livi-ai-api
-
-# SSH in
-ssh user@103.77.107.162
-cd /opt/livi-ai-api
-
-# Setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt --no-build-isolation
-
-# Configure
-cp .env.example .env
-nano .env  # set real DATABASE_URL and CMS_API_KEY
-
-# Run migrations
-psql $DATABASE_URL -f migrations/001_chatbot_config.sql
-psql $DATABASE_URL -f migrations/002_knowledge_base_documents.sql
-psql $DATABASE_URL -f migrations/003_conversation_analytics.sql
-
-# Start (production)
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-For production, run behind a process manager (systemd or PM2) and optionally proxy through nginx.
