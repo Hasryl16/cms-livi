@@ -7,9 +7,12 @@ from db import get_db
 from typing import Optional
 
 _FUNC_TAG_RE = re.compile(r'<function=[^>]+>.*?</function>', re.DOTALL)
+_ACTION_RE = re.compile(r'\n?ACTION:[A-Z_]+\s*$', re.MULTILINE)
 
 def _clean_content(text: str) -> str:
-    return _FUNC_TAG_RE.sub('', text).strip()
+    text = _FUNC_TAG_RE.sub('', text)
+    text = _ACTION_RE.sub('', text)
+    return text.strip()
 
 router = APIRouter()
 
@@ -200,6 +203,9 @@ async def get_chat_log(
             continue
 
         clean = _clean_content(str(content))
+        # If the entire AI content was an action token, show a form indicator
+        if not clean and re.search(r'ACTION:[A-Z_]+', str(content)):
+            clean = '[ Formulir kontak ditampilkan ]'
         if not clean:
             continue
 
